@@ -9,7 +9,7 @@ from ..sse import Message
 
 from concurrent.futures import ThreadPoolExecutor
 from flask import g, request, Response, stream_with_context, Blueprint, current_app
-from typing import List, Tuple
+from typing import List
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -100,14 +100,14 @@ def stream_response(global_state, uuid):
 
 def bulk_completions(global_state, tasks: List[InferenceRequest]):
     time.sleep(1)
-    local_tasks, remote_tasks = split_tasks_by_provider(tasks)
+    sequential_tasks, parallel_tasks = global_state.inference_manager.split_tasks_by_provider(tasks)
 
-    if remote_tasks:
-        with ThreadPoolExecutor(max_workers=len(remote_tasks)) as executor:
-            futures = [executor.submit(global_state.text_generation, task) for task in remote_tasks]
+    if parallel_tasks:
+        with ThreadPoolExecutor(max_workers=len(parallel_tasks)) as executor:
+            futures = [executor.submit(global_state.text_generation, task) for task in parallel_tasks]
             [future.result() for future in futures]
 
-    for task in local_tasks:
+    for task in sequential_tasks:
         global_state.text_generation(task)
 
     global_state.get_announcer().announce(InferenceResult(
@@ -119,11 +119,3 @@ def bulk_completions(global_state, tasks: List[InferenceRequest]):
         probability=None,
         top_n_distribution=None
     ), event="done")
-
-def split_tasks_by_provider(tasks: List[InferenceRequest]) -> Tuple[List[InferenceRequest], List[InferenceRequest]]:
-    local_tasks, remote_tasks = [], []
-
-    for task in tasks:
-        (local_tasks if task.model_provider == "huggingface-local" else remote_tasks).append(task)
-
-    return local_tasks, remote_tasks

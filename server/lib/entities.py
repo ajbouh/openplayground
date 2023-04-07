@@ -4,11 +4,12 @@ from .event_emitter import EventEmitter, EVENTS
 
 class Model:
     def __init__(
-        self, name: str, enabled: bool, capabilities: List[str],  provider: str, status: str, parameters: dict = None
+        self, name: str, enabled: bool, capabilities: List[str],  provider: str, status: str, preload: bool = False, parameters: dict = None
     ):
         self.name = name
         self.capabilities = capabilities
         self.enabled = enabled
+        self.preload = preload
         self.provider = provider
         self.status = status
         self.parameters = parameters
@@ -112,7 +113,8 @@ class ProviderEncoder(json.JSONEncoder):
             models = [{
                 "name": model.name, "capabilities": model.capabilities,
                 "enabled": model.enabled, "provider": model.provider,
-                "status": model.status, "parameters": model.parameters
+                "status": model.status, "parameters": model.parameters,
+                "preload": model.preload,
             } for model in obj.models]
             
             if not self.serialize_models_as_list:

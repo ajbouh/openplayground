@@ -13,7 +13,7 @@ import logging
 from aleph_alpha_client import Client as aleph_client, CompletionRequest, Prompt
 from datetime import datetime
 from dataclasses import dataclass
-from typing import Callable, Union
+from typing import Callable, Union, Tuple, List
 from .huggingface.hf import HFInference
 
 logger = logging.getLogger(__name__)
@@ -130,8 +130,19 @@ class InferenceAnnouncer:
             self.cancel_cache[uuid] = True      
    
 class InferenceManager:
-    def __init__(self, sse_topic):
+    def __init__(self, sse_topic, preload_local_hf_model_names: List[str] = None):
         self.announcer = InferenceAnnouncer(sse_topic)
+        self.preloaded_local_hf_models = dict()
+        for hf_model_name in preload_local_hf_model_names:
+            self.preloaded_local_hf_models[hf_model_name] = HFInference(hf_model_name)
+
+    def split_tasks_by_provider(self, tasks: List[InferenceRequest]) -> Tuple[List[InferenceRequest], List[InferenceRequest]]:
+        sequential_tasks, parallel_tasks = [], []
+
+        for task in tasks:
+            (sequential_tasks if task.model_provider == "huggingface-local" and task.model_name not in self.preloaded_local_hf_models else parallel_tasks).append(task)
+
+        return sequential_tasks, parallel_tasks
 
     def __error_handler__(self, inference_fn: InferenceFunction, provider_details: ProviderDetails, inference_request: InferenceRequest):
         logger.info(f"Requesting inference from {inference_request.model_name} on {inference_request.model_provider}")
@@ -566,10 +577,15 @@ class InferenceManager:
     def forefront_text_generation(self, provider_details: ProviderDetails, inference_request: InferenceRequest):
         self.__error_handler__(self.__forefront_text_generation__, provider_details, inference_request)
 
+    def provision_local_text_generation_model(self, inference_request: InferenceRequest) -> HFInference:
+        if inference_request.model_name in self.preloaded_local_hf_models:
+            return self.preloaded_local_hf_models[inference_request.model_name]
+        return HFInference(inference_request.model_name)
+
     def __local_text_generation__(self, provider_details: ProviderDetails, inference_request: InferenceRequest):
         cancelled = False
 
-        hf = HFInference(inference_request.model_name)
+        hf = self.provision_local_text_generation_model(inference_request)
         output = hf.generate(
             prompt=inference_request.prompt,
             max_length=int(inference_request.model_parameters['maximumLength']),

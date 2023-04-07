@@ -41,6 +41,7 @@ class Storage:
                     provider=provider_name,
                     capabilities=model.get("capabilities", []),
                     enabled=model.get("enabled", False),
+                    preload=model.get("preload", False),
                     status=model.get("status", "ready"),
                     parameters=model.get("parameters", {})
                 )
@@ -218,6 +219,7 @@ class Storage:
                     model.name: {
                         'capabilities': model.capabilities,
                         'enabled': model.enabled,
+                        'preload': model.preload,
                         'status': model.status,
                         'parameters': model.parameters,
                     }

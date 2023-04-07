@@ -260,8 +260,14 @@ class GlobalStateManager:
 
         self.notification_manager = NotificationManager(self.sse_manager.get_topic("notifications"))
 
+        preload_hf_model_names = [
+            model.name
+            for model in storage.get_provider("huggingface-local").models
+            if model.preload
+        ]
         self.inference_manager = InferenceManager(
-            self.sse_manager.get_topic("inferences")
+            self.sse_manager.get_topic("inferences"),
+            preload_hf_model_names,
         )
         self.storage = storage
         self.download_manager = DownloadManager(storage)
@@ -314,7 +320,8 @@ def cli():
 @click.option('--debug/--no-debug', default=False, help='Enable or disable Flask debug mode. Default: False.')
 @click.option('--env', '-e', default=".env", help='Path to the environment file for storing and reading API keys. Default: .env.')
 @click.option('--models', '-m', default=None, help='Path to the configuration file for loading models. Default: None.')
-def run(host, port, debug, env, models):
+@click.option('--force-preload-hf', default=(os.environ.get("FORCE_PRELOAD_HF_MODELS") or "").split(":"), multiple=True)
+def run(host, port, debug, env, models, force_preload_hf):
     """
     Run the OpenPlayground server.
 
@@ -332,6 +339,25 @@ def run(host, port, debug, env, models):
     $ openplayground run --host=0.0.0.0 --port=8080 --debug --env=keys.env --models=models.json
     """
     storage = Storage(models, env)
+    if force_preload_hf:
+        for model_name in force_preload_hf:
+                provider = storage.get_provider("huggingface-local")
+                if provider.has_model(model_name):
+                    model = provider.get_model(model_name)
+                    model.preload = True
+                    model.enabled = True
+                    provider.update_model(model.name, model)
+                else:
+                    model = Model(
+                        name=model_name,
+                        capabilities=provider.default_capabilities,
+                        provider="huggingface-local",
+                        status="ready",
+                        preload=True,
+                        enabled=True,
+                        parameters=provider.default_parameters
+                    )
+                    provider.add_model(model)
     app.config['GLOBAL_STATE'] = GlobalStateManager(storage)
 
     app.run(host=host, port=port, debug=debug)
