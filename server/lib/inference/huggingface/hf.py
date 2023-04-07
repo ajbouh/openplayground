@@ -6,7 +6,7 @@ import importlib
 import logging
 import warnings
 
-from transformers import AutoTokenizer, AutoConfig, PreTrainedModel, PreTrainedTokenizer
+from transformers import AutoTokenizer, AutoConfig, PreTrainedModel, PreTrainedTokenizer, AutoModelForCausalLM
 from .generator import greedy_search_generator
 from .helpers import StoppingCriteriaSub
 
@@ -36,8 +36,13 @@ class HFInference:
         '''
         tokenizer = AutoTokenizer.from_pretrained(model_name)
         config = AutoConfig.from_pretrained(model_name) # load config for model
-        model_class = getattr(MODULE, config.architectures[0]) # get model class from config
-        model = model_class.from_pretrained(model_name, config=config) # dynamically load right model class for text generation
+        logger.info(f'model config: {config}')
+        if config.architectures:
+            model_classname = config.architectures[0]
+            model_class = getattr(MODULE, model_classname) # get model class from config
+            model = model_class.from_pretrained(model_name, config=config) # dynamically load right model class for text generation
+        else:
+            model = AutoModelForCausalLM.from_pretrained(model_name, device_map='auto' if DEVICE == 'cuda' else None)
 
         param_size = sum(
             param.nelement() * param.element_size() for param in model.parameters()
@@ -49,7 +54,7 @@ class HFInference:
         logger.info('model size: {:.3f}MB'.format(size_all_mb))
 
         if DEVICE == 'cuda':
-            device_memory = torch.cuda.get_device_properties(0).total_memory / 1024**2
+            device_memory = sum(torch.cuda.get_device_properties(device).total_memory / 1024**2 for device in range(torch.cuda.device_count))
         else:
             device_memory = psutil.virtual_memory().total / 1024**2
 
@@ -58,7 +63,6 @@ class HFInference:
         if size_all_mb > device_memory * 0.95: #some padding
             raise Exception('Model size is too large for host to run inference on')
 
-        model.to(DEVICE) # gpu inference if possible
         return model, tokenizer
 
     def generate(self, 
