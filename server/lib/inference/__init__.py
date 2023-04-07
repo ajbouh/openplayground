@@ -201,8 +201,8 @@ class InferenceManager:
                 infer_result.token = f"[ERROR] Error parsing response from API: {e}"
                 logger.error(f"Error parsing response from API: {e}")
         except Exception as e:
-            infer_result.token = f"[ERROR] {e}"
-            logger.error(f"Error: {e}")
+            infer_result.token = f"[ERROR] Unexpected: {e}"
+            logger.error(e, exc_info=True)
         finally:
             if infer_result.token is None:
                 infer_result.token = "[COMPLETED]"
